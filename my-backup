@@ -1,0 +1,261 @@
+#!/bin/bash
+
+#    This program is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+# This script helps you to create backup from a directory(that contains some subdirectories).
+# You can also update your backup by this script.
+
+# my github: https://github.com/alireza-amirsamimi 
+
+clear
+
+
+# terminal arquments
+while getopts "s:d:b:r:h" options ; do
+
+    case "${options}" in
+
+        s)
+            source_hdd_path=${OPTARG}
+        ;;
+
+        d)
+            backup_hdd_path=${OPTARG}
+        ;;
+
+        b)
+            beats=${OPTARG}
+        ;;
+
+        r)
+            remove_old_files=${OPTARG}
+        ;;
+
+        h)
+            echo -e "my-backup\n -s 'source path'\n -d 'destination path(backup directory)'\n -b 'compare at most LIMIT bytes'\n -r 'remove old files on destination directory that not existed any more on source directory(y/n)'\n"
+            echo -e "Author: AliReza AmirSamimi"
+            exit 0
+        ;;
+
+        *)
+            echo "Wrong input"
+            exit 1
+        ;;
+    esac
+done
+
+
+# Check source_hdd_path
+if [[ -d "$source_hdd_path" ]];then
+    
+    echo -e "$source_hdd_path is valid.\n"
+else    
+    echo"Wrong source path"
+    exit 1
+fi
+
+
+# Check backup_hdd_path
+if [[ -d "$backup_hdd_path" ]];then
+     
+    echo -e "$backup_hdd_path is valid.\n"
+else    
+    
+    echo "Wrong destination path"
+    exit 1
+fi
+
+
+# Set default value for beats, if it didn't set
+if [[ -z "$beats" ]];then
+    beats=100
+fi
+
+
+# remove old file?
+if [[ -z "$remove_old_files" ]];then
+    remove_old_files="y"
+fi
+
+case "$remove_old_files" in
+    "no"|"n"|"No"|"NO")
+        remove_old_files="n";;
+    "yes"|"y"|"Yes"|"YES")
+        remove_old_files="y";;
+    *)
+        echo -e "Wrong input for -r switch"
+        exit 1;;
+esac
+    
+
+# Check if path ended with /
+if [[ "${source_hdd_path:-1}" != "/" ]];then
+
+    # Add / after the last character
+    source_hdd_path="$source_hdd_path/"
+fi
+
+if [[ "${backup_hdd_path:-1}" != "/" ]];then
+
+    # Add / after the last character
+    backup_hdd_path="$backup_hdd_path/"
+fi
+
+# Set IFS to "new line"
+IFS=$'\n'
+
+# Find all subdirectories in source_hdd_path and backup_hdd_path
+source_directories=$(find "$source_hdd_path" -type d)
+
+backup_directories=$(find "$backup_hdd_path" -type d)
+
+# Copy new directories
+for directory in $source_directories ;do
+
+    # Create backup_hdd_path
+    # Subtract source_hdd_path from source_directory address
+    subtracted_address=${directory#"$source_hdd_path"}
+    
+    # Create backup path
+    backup_directroy_path="$backup_hdd_path$subtracted_address"
+
+    case "${backup_directories}" in
+
+        # Directory is existed
+        *"$backup_directroy_path"*)
+            
+            # Do nothing!
+            continue
+        ;;
+
+        # Directory is not existed
+        *)
+            echo -e "this directory is new:\n $backup_directroy_path"
+
+            # So copy the directory
+            cp -R "$directory" "$backup_directroy_path"
+        ;;
+    esac
+
+
+done
+
+if [[ "$remove_old_files" == "y" ]];then
+
+    # Delete old directories in backup_directories that not existed any more in source_directories
+    for directory in $backup_directories ;do
+
+        # Create source_hdd_path
+        # Subtract backup_hdd_path from backup_directory address
+        subtracted_address=${directory#"$backup_hdd_path"}
+        
+        # Create source path
+        source_directroy_path="$source_hdd_path$subtracted_address"
+
+        case "${source_directories}" in
+
+            # Directory is existed
+            *"$source_directroy_path"*)
+                
+                # Do nothing!
+                continue
+            ;;
+
+            # Directory is not existed any more in source directory.
+            *)
+                echo -e "this directory is deleted:\n $directory"
+
+                # So delete the directory
+                rm -R "$directory"
+            ;;
+        esac
+
+    done
+fi
+
+# Find address of files in backup_hdd_path and source_hdd_path
+source_hdd_files=$(find "$source_hdd_path" -type f)
+backup_hdd_files=$(find "$backup_hdd_path" -type f)
+
+
+for file in $source_hdd_files ;do
+
+    # Check if file is existed in backup hdd
+    subtracted_address=${file#"$source_hdd_path"}
+
+    # Create backup_hdd_path for file
+    backup_file_path="$backup_hdd_path$subtracted_address"
+
+
+    case "${backup_hdd_files}" in
+
+        # File is existed
+        *"$backup_file_path"*)
+            
+            # Compare backup and source files!
+            if !(cmp -n "$beats" -s "$file" "$backup_file_path");then
+
+                # So copy file to backup hdd
+                echo -e "this file is changed:\n $file"
+                cp "$file" "$backup_file_path"
+ 
+            fi
+
+        ;;
+
+        # File is not existed
+        *)
+            echo -e "this file is new:\n $backup_file_path"
+
+            # So copy file to backup hdd
+            cp "$file" "$backup_file_path"
+        ;;
+    esac
+
+done
+
+
+if [[ "$remove_old_files" == "y" ]];then
+
+    # Delete old files in backup_hdd_files that not existed any more in source_hdd_files
+    for file in $backup_hdd_files ;do
+
+        # Check if file is existed in source hdd
+        subtracted_address=${file#"$backup_hdd_path"}
+
+        # Create source_hdd_path for file
+        source_file_path="$source_hdd_path$subtracted_address"
+
+
+        case "${source_hdd_files}" in
+
+            # File is existed
+            *"$source_file_path"*)
+                continue
+                
+            ;;
+
+            # File is not existed
+            *)
+                echo -e "this file is deleted:\n $file"
+
+                # So delete file
+                rm "$file"
+            ;;
+        esac
+
+    done
+fi
+
+exit 0
